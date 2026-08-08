@@ -15,7 +15,10 @@ BytesIO buffer. Without a correct `buf.name`, everything becomes a document.
 """
 import asyncio
 import logging
+import os
+import tempfile
 from io import BytesIO
+from typing import Union
 
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
@@ -60,14 +63,62 @@ def _reply_to_kwarg(dest_topic_id: int) -> dict:
     return {}
 
 
-async def _download(client: TelegramClient, message) -> BytesIO | None:
-    """Download message media into memory. Returns None if no media."""
+# Files larger than this are streamed to a temp file instead of RAM.
+# 100 MB keeps peak memory well under Render's 512 MB free-tier limit.
+_LARGE_FILE_THRESHOLD = 100 * 1024 * 1024  # 100 MB
+
+# Type alias: either a BytesIO (in-RAM) or a str path (on-disk temp file)
+_FileObj = Union[BytesIO, str]
+
+
+async def _download(
+    client: TelegramClient, message, filename: str | None
+) -> tuple[_FileObj | None, bool]:
+    """
+    Download message media.
+    - Small files (≤100 MB): BytesIO with .name set → zero disk, fast.
+    - Large files (>100 MB): named temp file on disk → zero extra RAM.
+
+    Returns (file_obj, is_temp_path) where:
+      is_temp_path=False → file_obj is BytesIO
+      is_temp_path=True  → file_obj is a str path; caller MUST delete it.
+    """
     if not message.media:
-        return None
+        return None, False
+
+    # Peek at declared size (only available on documents, not photos)
+    declared_size: int = 0
+    if isinstance(message.media, MessageMediaDocument):
+        declared_size = getattr(message.media.document, "size", 0) or 0
+
+    if declared_size > _LARGE_FILE_THRESHOLD:
+        # Stream to a named temp file so the correct extension is preserved
+        ext = os.path.splitext(filename or "")[1] or ".bin"
+        fd, tmp_path = tempfile.mkstemp(suffix=ext)
+        os.close(fd)
+        await client.download_media(message, file=tmp_path)
+        logger.info(
+            "Large file (%d MB) → temp disk: %s",
+            declared_size // 1024 // 1024, tmp_path,
+        )
+        return tmp_path, True
+
+    # Small file → RAM
     buf = BytesIO()
     await client.download_media(message, file=buf)
     buf.seek(0)
-    return buf
+    if filename:
+        buf.name = filename
+    return buf, False
+
+
+def _cleanup(file_obj: _FileObj, is_temp: bool) -> None:
+    """Delete the temp file if one was used."""
+    if is_temp and isinstance(file_obj, str) and os.path.exists(file_obj):
+        try:
+            os.unlink(file_obj)
+        except OSError:
+            pass
 
 
 def _mime_to_ext(mime: str) -> str:
@@ -185,23 +236,24 @@ async def copy_message(
         return
 
     # ── All media types ───────────────────────────────────────────────────────
-    buf = await _download(client, message)
-    if buf is None:
+    filename, extra = _classify(message)
+    file_obj, is_temp = await _download(client, message, filename)
+
+    if file_obj is None:
         logger.warning("Could not download media for message %d, skipping.", message.id)
         return
 
-    filename, extra = _classify(message)
-    if filename:
-        buf.name = filename  # ← critical: tells Telethon the file type
-
-    await _call(client.send_file(
-        dest_chat,
-        file=buf,
-        caption=message.text or "",
-        formatting_entities=message.entities,
-        **route,
-        **extra,
-    ))
+    try:
+        await _call(client.send_file(
+            dest_chat,
+            file=file_obj,
+            caption=message.text or "",
+            formatting_entities=message.entities,
+            **route,
+            **extra,
+        ))
+    finally:
+        _cleanup(file_obj, is_temp)
 
 
 async def copy_album(
@@ -214,13 +266,14 @@ async def copy_album(
     route = _reply_to_kwarg(dest_topic_id)
 
     files = []
+    temps = []  # track temp paths for cleanup
     for msg in messages:
-        buf = await _download(client, msg)
-        if buf:
-            filename, _ = _classify(msg)
-            if filename:
-                buf.name = filename  # ← set extension per item
-            files.append(buf)
+        filename, _ = _classify(msg)
+        file_obj, is_temp = await _download(client, msg, filename)
+        if file_obj:
+            files.append(file_obj)
+            if is_temp:
+                temps.append(file_obj)
 
     if not files:
         return
@@ -228,13 +281,17 @@ async def copy_album(
     caption = next((m.text for m in messages if m.text), "") or ""
     entities = next((m.entities for m in messages if m.entities), None)
 
-    await _call(client.send_file(
-        dest_chat,
-        file=files,
-        caption=caption,
-        formatting_entities=entities,
-        **route,
-    ))
+    try:
+        await _call(client.send_file(
+            dest_chat,
+            file=files,
+            caption=caption,
+            formatting_entities=entities,
+            **route,
+        ))
+    finally:
+        for path in temps:
+            _cleanup(path, True)
 
 
 # ── Internal helper needed for poll SendMediaRequest ─────────────────────────
