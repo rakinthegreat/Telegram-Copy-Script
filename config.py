@@ -1,0 +1,47 @@
+"""
+config.py — All configuration loaded from environment variables.
+Copy .env.example to .env and fill in your values for local development.
+"""
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def _required(key: str) -> str:
+    val = os.environ.get(key, "").strip()
+    if not val:
+        raise EnvironmentError(
+            f"❌ Missing required environment variable: {key}\n"
+            f"   See .env.example for instructions."
+        )
+    return val
+
+
+# ── Telegram API credentials (from https://my.telegram.org) ──────────────────
+API_ID: int = int(_required("API_ID"))
+API_HASH: str = _required("API_HASH")
+
+# ── Telethon StringSession (generated once via generate_session.py) ───────────
+SESSION_STRING: str = _required("SESSION_STRING")
+
+# ── Chat IDs (use negative IDs for groups/channels, e.g. -1001234567890) ─────
+SOURCE_CHAT_ID: int = int(_required("SOURCE_CHAT_ID"))
+DEST_CHAT_ID: int = int(_required("DEST_CHAT_ID"))
+
+# Private channel used to persist topic map + copy progress across restarts
+STATE_CHANNEL_ID: int = int(_required("STATE_CHANNEL_ID"))
+
+# ── Behaviour ─────────────────────────────────────────────────────────────────
+# Copy all existing history on startup (then switch to live mode)
+COPY_HISTORY: bool = os.environ.get("COPY_HISTORY", "true").lower() == "true"
+
+# Seconds to wait between each sent message to avoid Telegram flood limits
+DELAY_BETWEEN_MSGS: float = float(os.environ.get("DELAY_BETWEEN_MSGS", "1.5"))
+
+# Maximum messages to buffer per history fetch (lower = less RAM on free tier)
+HISTORY_BATCH_SIZE: int = int(os.environ.get("HISTORY_BATCH_SIZE", "200"))
+
+# ── Server ────────────────────────────────────────────────────────────────────
+# Port for the Flask health-check server (Render sets this automatically)
+PORT: int = int(os.environ.get("PORT", "10000"))

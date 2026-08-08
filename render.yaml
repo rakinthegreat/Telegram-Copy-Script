@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: telegram-copy-bot
+    runtime: python
+    plan: free                          # free tier — kept alive by UptimeRobot
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+
+    envVars:
+      # ── Required: fill in via Render dashboard ──────────────────────────────
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+      - key: SESSION_STRING
+        sync: false
+      - key: SOURCE_CHAT_ID
+        sync: false
+      - key: DEST_CHAT_ID
+        sync: false
+      - key: STATE_CHANNEL_ID
+        sync: false
+
+      # ── Optional: safe defaults already set ────────────────────────────────
+      - key: COPY_HISTORY
+        value: "true"
+      - key: DELAY_BETWEEN_MSGS
+        value: "1.5"
+      - key: HISTORY_BATCH_SIZE
+        value: "200"

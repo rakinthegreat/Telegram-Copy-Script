@@ -1,0 +1,17 @@
+# Virtual environment
+venv/
+.venv/
+env/
+.env.example
+
+# Local secrets — NEVER commit this
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Telethon session files (session is stored as STRING_SESSION env var, not file)
+*.session
+*.session-journal
