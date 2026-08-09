@@ -36,6 +36,10 @@ STATE_CHANNEL_ID: int = int(_required("STATE_CHANNEL_ID"))
 # Copy all existing history on startup (then switch to live mode)
 COPY_HISTORY: bool = os.environ.get("COPY_HISTORY", "true").lower() == "true"
 
+# If true: skip text-only messages and polls — copy only media (photos, videos,
+# documents, stickers, voice, etc.)  Default: false (copy everything)
+MEDIA_ONLY: bool = os.environ.get("MEDIA_ONLY", "false").lower() == "true"
+
 # Seconds to wait between each sent message to avoid Telegram flood limits
 DELAY_BETWEEN_MSGS: float = float(os.environ.get("DELAY_BETWEEN_MSGS", "1.5"))
 

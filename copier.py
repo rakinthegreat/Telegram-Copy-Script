@@ -55,18 +55,13 @@ async def _call(coro):
 
 def _reply_to_kwarg(dest_topic_id: int) -> dict:
     """
-    Build the reply_to kwarg needed to route a message into a specific forum topic.
-    Setting top_msg_id=dest_topic_id tells Telegram this message belongs to that
-    thread (forum topic). reply_to_msg_id must also be set to the same value.
+    Build the reply_to kwarg to route a message into a specific forum topic.
+    Telethon 1.44 only accepts a plain int for reply_to in send_message/send_file.
+    It wraps it internally as InputReplyToMessage(reply_to_msg_id=N) which is
+    enough to route into the correct forum thread.
     """
-    from telethon.tl.types import InputReplyToMessage
     if dest_topic_id and dest_topic_id != 1:
-        return {
-            "reply_to": InputReplyToMessage(
-                reply_to_msg_id=dest_topic_id,
-                top_msg_id=dest_topic_id,
-            )
-        }
+        return {"reply_to": dest_topic_id}
     # General topic (id=1): messages go there by default, no reply_to needed
     return {}
 
@@ -221,6 +216,8 @@ async def copy_message(
 
     # ── Poll ──────────────────────────────────────────────────────────────────
     if isinstance(message.media, MessageMediaPoll):
+        if config.MEDIA_ONLY:
+            return  # skip polls in media-only mode
         try:
             await _call(client(SendMediaRequest(
                 peer=dest_chat,
@@ -234,7 +231,7 @@ async def copy_message(
 
     # ── Text only ─────────────────────────────────────────────────────────────
     if not message.media:
-        if message.text:
+        if message.text and not config.MEDIA_ONLY:
             await _call(client.send_message(
                 dest_chat,
                 message=message.text,
@@ -305,7 +302,7 @@ async def copy_album(
 # ── Internal helper needed for poll SendMediaRequest ─────────────────────────
 
 def _make_reply_to(topic_id: int):
-    """Build a forum-thread-aware ReplyToMessage for raw SendMediaRequest."""
+    """Build a ReplyToMessage for raw SendMediaRequest (used for polls)."""
     from telethon.tl.types import InputReplyToMessage
     return InputReplyToMessage(
         reply_to_msg_id=topic_id,
