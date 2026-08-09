@@ -56,9 +56,8 @@ async def _call(coro):
 def _reply_to_kwarg(dest_topic_id: int) -> dict:
     """
     Build the reply_to kwarg needed to route a message into a specific forum topic.
-    IMPORTANT: A bare integer reply_to does NOT set forum_topic=True on the wire,
-    so Telethon sends to the General topic instead. We must use InputReplyToMessage
-    with forum_topic=True explicitly.
+    Setting top_msg_id=dest_topic_id tells Telegram this message belongs to that
+    thread (forum topic). reply_to_msg_id must also be set to the same value.
     """
     from telethon.tl.types import InputReplyToMessage
     if dest_topic_id and dest_topic_id != 1:
@@ -66,7 +65,6 @@ def _reply_to_kwarg(dest_topic_id: int) -> dict:
             "reply_to": InputReplyToMessage(
                 reply_to_msg_id=dest_topic_id,
                 top_msg_id=dest_topic_id,
-                forum_topic=True,
             )
         }
     # General topic (id=1): messages go there by default, no reply_to needed
@@ -307,10 +305,9 @@ async def copy_album(
 # ── Internal helper needed for poll SendMediaRequest ─────────────────────────
 
 def _make_reply_to(topic_id: int):
-    """Build a forum-topic-aware ReplyToMessage for raw SendMediaRequest."""
+    """Build a forum-thread-aware ReplyToMessage for raw SendMediaRequest."""
     from telethon.tl.types import InputReplyToMessage
     return InputReplyToMessage(
         reply_to_msg_id=topic_id,
         top_msg_id=topic_id,
-        forum_topic=True,
     )

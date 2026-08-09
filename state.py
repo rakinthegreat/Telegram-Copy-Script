@@ -41,7 +41,13 @@ async def _write(client: TelegramClient, marker: str, data: dict) -> None:
     content = marker + json.dumps({str(k): v for k, v in data.items()}, separators=(",", ":"))
     existing = await _find_message(client, marker)
     if existing:
-        await existing.edit(content)
+        try:
+            await existing.edit(content)
+        except Exception as e:
+            # MessageNotModifiedError: content unchanged — perfectly fine
+            if "not modified" in str(e).lower():
+                return
+            raise
     else:
         await client.send_message(config.STATE_CHANNEL_ID, content)
 
