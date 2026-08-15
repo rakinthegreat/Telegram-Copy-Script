@@ -74,8 +74,10 @@ async def _copy_history(
         source_topics = await topic_mgr.fetch_all_topics(client, source_entity)
     else:
         # Fake a single topic for standard groups/channels
-        from telethon.tl.types import ForumTopic
-        source_topics = [ForumTopic(id=1, title="Main Chat", date=None, date_ts=0, my=False, closed=False, pinned=False, short=False, hidden=False)]
+        class DummyTopic:
+            id = 1
+            title = "Main Chat"
+        source_topics = [DummyTopic()]
 
     for topic in source_topics:
         if not getattr(topic, "title", None):
