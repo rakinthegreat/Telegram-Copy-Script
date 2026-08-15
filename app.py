@@ -69,33 +69,45 @@ async def _copy_history(
     Copy all historical messages from each source topic to its mirror topic.
     Resumes from the last successfully copied message ID if interrupted.
     """
-    source_topics = await topic_mgr.fetch_all_topics(client, source_entity)
+    is_forum = getattr(source_entity, "forum", False)
+    if is_forum:
+        source_topics = await topic_mgr.fetch_all_topics(client, source_entity)
+    else:
+        # Fake a single topic for standard groups/channels
+        from telethon.tl.types import ForumTopic
+        source_topics = [ForumTopic(id=1, title="Main Chat", date=None, date_ts=0, my=False, closed=False, pinned=False, short=False, hidden=False)]
 
     for topic in source_topics:
-        if not isinstance(topic, ForumTopic):
+        if not getattr(topic, "title", None):
             continue
 
         src_id = topic.id
-        dest_id = topic_map.get(src_id)
-        if dest_id is None:
-            logger.warning("No dest mapping for topic '%s' (id=%d), skipping.", topic.title, src_id)
-            continue
+        if is_forum:
+            dest_id = topic_map.get(src_id)
+            if dest_id is None:
+                logger.warning("No dest mapping for topic '%s' (id=%d), skipping.", topic.title, src_id)
+                continue
+        else:
+            dest_id = None # standard group, no reply_to routing
 
         min_id = progress.get(src_id, 0)
         logger.info(
-            "▶ History: '%s'  src_topic=%d → dest_topic=%d  (resuming from msg_id=%d)",
+            "▶ History: '%s'  src_topic=%s → dest_topic=%s  (resuming from msg_id=%d)",
             topic.title, src_id, dest_id, min_id,
         )
 
         # Collect ALL messages for this topic in chronological order
         messages = []
-        async for msg in client.iter_messages(
-            source_entity,
-            reply_to=src_id,
-            min_id=min_id,
-            reverse=True,      # oldest first
-            limit=None,
-        ):
+        iter_kwargs = {
+            "entity": source_entity,
+            "min_id": min_id,
+            "reverse": True,  # oldest first
+            "limit": None,
+        }
+        if is_forum and src_id != 1:
+            iter_kwargs["reply_to"] = src_id
+
+        async for msg in client.iter_messages(**iter_kwargs):
             messages.append(msg)
 
         logger.info("   %d messages to copy in '%s'", len(messages), topic.title)
@@ -191,13 +203,22 @@ async def main() -> None:
     logger.info("Source : %s", source_entity.title)
     logger.info("Dest   : %s", dest_entity.title)
 
-    # 4. Build / reload topic map
-    topic_map = await state.load_topic_map(client)
-    if not topic_map:
-        logger.info("No saved topic map — building now (this may take a minute)…")
-        topic_map = await topic_mgr.build_topic_map(client, source_entity, dest_entity)
-    else:
-        logger.info("Topic map loaded (%d topics)", len(topic_map))
+    # 4. Build / reload topic map (only if both are forums)
+    is_src_forum = getattr(source_entity, "forum", False)
+    is_dest_forum = getattr(dest_entity, "forum", False)
+    
+    topic_map = {}
+    if is_src_forum and is_dest_forum:
+        topic_map = await state.load_topic_map(client)
+        if not topic_map:
+            logger.info("No saved topic map — building now (this may take a minute)…")
+            topic_map = await topic_mgr.build_topic_map(client, source_entity, dest_entity)
+        else:
+            logger.info("Topic map loaded (%d topics)", len(topic_map))
+    elif not is_src_forum:
+        logger.info("Source is not a forum (standard group/channel). Skipping topic map.")
+    elif not is_dest_forum:
+        logger.info("Dest is not a forum. Messages will be copied without topic routing.")
 
     # 5. History copy
     if config.COPY_HISTORY:
@@ -210,16 +231,17 @@ async def main() -> None:
         msg = event.message
 
         # Determine which topic this message belongs to
-        src_topic_id = 1  # default: General
-        rt = msg.reply_to
-        if rt is not None:
-            top = getattr(rt, "reply_to_top_id", None)
-            if top:
-                src_topic_id = top
-            elif getattr(rt, "forum_topic", False):
-                src_topic_id = getattr(rt, "reply_to_msg_id", 1) or 1
-
-        dest_topic_id = topic_map.get(src_topic_id, topic_map.get(1, 1))
+        dest_topic_id = None
+        if is_src_forum and is_dest_forum:
+            src_topic_id = 1  # default: General
+            rt = msg.reply_to
+            if rt is not None:
+                top = getattr(rt, "reply_to_top_id", None)
+                if top:
+                    src_topic_id = top
+                elif getattr(rt, "forum_topic", False):
+                    src_topic_id = getattr(rt, "reply_to_msg_id", 1) or 1
+            dest_topic_id = topic_map.get(src_topic_id, topic_map.get(1, 1))
 
         try:
             if msg.grouped_id:
