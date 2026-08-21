@@ -85,7 +85,7 @@ async def _create_topic(client: TelegramClient, dest_entity, topic: ForumTopic) 
 
 
 async def build_topic_map(
-    client: TelegramClient, source_entity, dest_entity
+    client: TelegramClient, source_entity, dest_entity, src_id: int, dest_id: int
 ) -> dict:
     """
     Build {source_topic_id: dest_topic_id} by:
@@ -95,7 +95,7 @@ async def build_topic_map(
 
     The General topic (id=1) is always mapped 1→1 (it exists in all forum groups).
     """
-    topic_map = await state.load_topic_map(client)
+    topic_map = await state.load_topic_map(client, src_id, dest_id)
     if topic_map:
         logger.info("Partial topic map loaded (%d entries); resuming build…", len(topic_map))
 
@@ -122,7 +122,7 @@ async def build_topic_map(
                 continue
 
         # Persist after every topic so a restart doesn't redo work
-        await state.save_topic_map(client, topic_map)
+        await state.save_topic_map(client, src_id, dest_id, topic_map)
 
     logger.info("Topic map complete: %d topics", len(topic_map))
     return topic_map

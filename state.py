@@ -21,9 +21,16 @@ import config
 
 logger = logging.getLogger(__name__)
 
-# Unique markers so we can find our state messages among other messages
-_TOPIC_MAP_MARKER = "TGCOPY_TOPIC_MAP:"
-_PROGRESS_MARKER = "TGCOPY_PROGRESS:"
+# Unique prefixes so we can find our state messages among other messages
+# Now supports pair-specific markers
+_TOPIC_MAP_PREFIX = "TGCOPY_TOPIC_MAP_"
+_PROGRESS_PREFIX = "TGCOPY_PROGRESS_"
+_LEGACY_TOPIC_MAP = "TGCOPY_TOPIC_MAP:"
+_LEGACY_PROGRESS = "TGCOPY_PROGRESS:"
+
+def _get_marker(prefix: str, src_id: int, dest_id: int) -> str:
+    return f"{prefix}{src_id}_{dest_id}:"
+
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -67,27 +74,59 @@ async def _read(client: TelegramClient, marker: str) -> dict:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-async def load_topic_map(client: TelegramClient) -> dict:
+async def load_topic_map(client: TelegramClient, src_id: int, dest_id: int) -> dict:
     """Return {source_topic_id: dest_topic_id}. Empty dict if none saved."""
-    data = await _read(client, _TOPIC_MAP_MARKER)
-    logger.info("Loaded topic map: %d topics", len(data))
+    marker = _get_marker(_TOPIC_MAP_PREFIX, src_id, dest_id)
+    data = await _read(client, marker)
+    logger.info("Loaded topic map for pair %d:%d (%d topics)", src_id, dest_id, len(data))
     return data
 
 
-async def save_topic_map(client: TelegramClient, topic_map: dict) -> None:
+async def save_topic_map(client: TelegramClient, src_id: int, dest_id: int, topic_map: dict) -> None:
     """Persist the full topic map to the state channel."""
-    await _write(client, _TOPIC_MAP_MARKER, topic_map)
-    logger.debug("Saved topic map (%d entries)", len(topic_map))
+    marker = _get_marker(_TOPIC_MAP_PREFIX, src_id, dest_id)
+    await _write(client, marker, topic_map)
+    logger.debug("Saved topic map for pair %d:%d (%d entries)", src_id, dest_id, len(topic_map))
 
 
-async def load_progress(client: TelegramClient) -> dict:
+async def load_progress(client: TelegramClient, src_id: int, dest_id: int) -> dict:
     """Return {source_topic_id: last_copied_msg_id}. Empty dict if none saved."""
-    data = await _read(client, _PROGRESS_MARKER)
-    logger.info("Loaded progress: %d topics tracked", len(data))
+    marker = _get_marker(_PROGRESS_PREFIX, src_id, dest_id)
+    data = await _read(client, marker)
+    logger.info("Loaded progress for pair %d:%d (%d topics tracked)", src_id, dest_id, len(data))
     return data
 
 
-async def save_progress(client: TelegramClient, progress: dict) -> None:
-    """Persist copy progress to the state channel."""
-    await _write(client, _PROGRESS_MARKER, progress)
-    logger.debug("Saved progress (%d topics)", len(progress))
+async def save_progress(client: TelegramClient, src_id: int, dest_id: int, progress: dict) -> None:
+    """Persist the copy progress dictionary to the state channel."""
+    marker = _get_marker(_PROGRESS_PREFIX, src_id, dest_id)
+    await _write(client, marker, progress)
+    logger.debug("Saved progress for pair %d:%d", src_id, dest_id)
+
+
+async def migrate_legacy_state(client: TelegramClient, first_src_id: int, first_dest_id: int) -> None:
+    """
+    Look for legacy state markers (from when the bot only supported a single pair).
+    If found, migrate them to the new pair-specific format for the first pair.
+    """
+    legacy_prog_msg = await _find_message(client, _LEGACY_PROGRESS)
+    if legacy_prog_msg:
+        # Read old
+        prog_data = await _read(client, _LEGACY_PROGRESS)
+        if prog_data:
+            # Save new
+            await save_progress(client, first_src_id, first_dest_id, prog_data)
+            logger.info("✅ Migrated legacy PROGRESS to pair %d:%d", first_src_id, first_dest_id)
+            # Delete old
+            await legacy_prog_msg.delete()
+
+    legacy_map_msg = await _find_message(client, _LEGACY_TOPIC_MAP)
+    if legacy_map_msg:
+        # Read old
+        map_data = await _read(client, _LEGACY_TOPIC_MAP)
+        if map_data:
+            # Save new
+            await save_topic_map(client, first_src_id, first_dest_id, map_data)
+            logger.info("✅ Migrated legacy TOPIC MAP to pair %d:%d", first_src_id, first_dest_id)
+            # Delete old
+            await legacy_map_msg.delete()

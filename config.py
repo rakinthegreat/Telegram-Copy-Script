@@ -25,9 +25,18 @@ API_HASH: str = _required("API_HASH")
 # ── Telethon StringSession (generated once via generate_session.py) ───────────
 SESSION_STRING: str = _required("SESSION_STRING")
 
-# ── Chat IDs (use negative IDs for groups/channels, e.g. -1001234567890) ─────
-SOURCE_CHAT_ID: int = int(_required("SOURCE_CHAT_ID"))
-DEST_CHAT_ID: int = int(_required("DEST_CHAT_ID"))
+# ── Chat Pairs (Format: source1:dest1,source2:dest2) ──────────────────────────
+def _parse_pairs(raw: str) -> list[tuple[int, int]]:
+    pairs = []
+    for pair in raw.split(","):
+        if ":" in pair:
+            src, dst = pair.split(":")
+            pairs.append((int(src.strip()), int(dst.strip())))
+    if not pairs:
+        raise EnvironmentError("❌ CHAT_PAIRS is empty or invalid. Format: src1:dest1,src2:dest2")
+    return pairs
+
+CHAT_PAIRS: list[tuple[int, int]] = _parse_pairs(_required("CHAT_PAIRS"))
 
 # Private channel used to persist topic map + copy progress across restarts
 STATE_CHANNEL_ID: int = int(_required("STATE_CHANNEL_ID"))
@@ -35,6 +44,9 @@ STATE_CHANNEL_ID: int = int(_required("STATE_CHANNEL_ID"))
 # ── Behaviour ─────────────────────────────────────────────────────────────────
 # Copy all existing history on startup (then switch to live mode)
 COPY_HISTORY: bool = os.environ.get("COPY_HISTORY", "true").lower() == "true"
+
+# Hours to spend copying a single pair before rotating to the next
+TIME_SLICE_HOURS: float = float(os.environ.get("TIME_SLICE_HOURS", "0.5"))
 
 # If true: skip text-only messages and polls — copy only media (photos, videos,
 # documents, stickers, voice, etc.)  Default: false (copy everything)
