@@ -71,7 +71,15 @@ async def _create_topic(client: TelegramClient, dest_entity, topic: ForumTopic) 
     if getattr(topic, "icon_emoji_id", None):
         kwargs["icon_emoji_id"] = topic.icon_emoji_id
 
-    result = await client(CreateForumTopicRequest(**kwargs))
+    try:
+        result = await client(CreateForumTopicRequest(**kwargs))
+    except Exception as e:
+        if "premium" in str(e).lower() or "emoji" in str(e).lower():
+            logger.warning("Could not use custom icon/color for '%s', retrying plain...", topic.title)
+            # Retry with just the title
+            result = await client(CreateForumTopicRequest(peer=input_peer, title=topic.title))
+        else:
+            raise
 
     # Extract new topic ID from the Updates object
     for upd in result.updates:
