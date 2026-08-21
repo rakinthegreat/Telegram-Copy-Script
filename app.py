@@ -208,6 +208,10 @@ async def main() -> None:
     me = await client.get_me()
     logger.info("Logged in as: %s (id=%d)", me.first_name, me.id)
 
+    # Force telethon to cache all chats we are part of so get_entity doesn't fail
+    logger.info("Fetching dialogs to cache entities...")
+    await client.get_dialogs()
+
     # 3. Migrate Legacy State (if any)
     if config.CHAT_PAIRS:
         first_src, first_dest = config.CHAT_PAIRS[0]
