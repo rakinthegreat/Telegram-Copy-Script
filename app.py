@@ -34,6 +34,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Suppress noisy internal Telethon logs (like "Got difference for channel...")
+logging.getLogger("telethon").setLevel(logging.WARNING)
+
 # ── Flask health server ────────────────────────────────────────────────────────
 flask_app = Flask(__name__)
 _start_time = time.time()
