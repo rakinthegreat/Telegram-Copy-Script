@@ -34,8 +34,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Suppress noisy internal Telethon logs (like "Got difference for channel...")
-logging.getLogger("telethon").setLevel(logging.WARNING)
+# Suppress ONLY the noisy internal updates logs (like "Got difference for channel...")
+# but keep download/upload logs visible!
+logging.getLogger("telethon.client.updates").setLevel(logging.WARNING)
 
 # ── Flask health server ────────────────────────────────────────────────────────
 flask_app = Flask(__name__)
