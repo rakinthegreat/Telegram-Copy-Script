@@ -94,6 +94,13 @@ async def _download(
     if isinstance(message.media, MessageMediaDocument):
         declared_size = getattr(message.media.document, "size", 0) or 0
 
+    if declared_size > config.MAX_FILE_SIZE_MB * 1024 * 1024:
+        logger.info(
+            "Skipping large file (%.1f MB > %d MB limit)",
+            declared_size / (1024 * 1024), config.MAX_FILE_SIZE_MB
+        )
+        return None, False
+
     if declared_size > _LARGE_FILE_THRESHOLD:
         # Stream to a named temp file so the correct extension is preserved
         ext = os.path.splitext(filename or "")[1] or ".bin"

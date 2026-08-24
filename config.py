@@ -52,6 +52,9 @@ TIME_SLICE_HOURS: float = float(os.environ.get("TIME_SLICE_HOURS", "0.5"))
 # documents, stickers, voice, etc.)  Default: false (copy everything)
 MEDIA_ONLY: bool = os.environ.get("MEDIA_ONLY", "false").lower() == "true"
 
+# Maximum file size to download/copy in MB. Files larger than this will be skipped.
+MAX_FILE_SIZE_MB: int = int(os.environ.get("MAX_FILE_SIZE_MB", "300"))
+
 # Seconds to wait between each sent message to avoid Telegram flood limits
 DELAY_BETWEEN_MSGS: float = float(os.environ.get("DELAY_BETWEEN_MSGS", "1.5"))
 
