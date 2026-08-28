@@ -238,14 +238,10 @@ async def main() -> None:
 
         topic_map = {}
         if is_src_forum and is_dest_forum:
-            topic_map = await state.load_topic_map(client, src_id, dest_id)
-            if not topic_map:
-                logger.info("No saved topic map for %d:%d — building now…", src_id, dest_id)
-                topic_map = await topic_mgr.build_topic_map(client, src_entity, dst_entity, src_id, dest_id)
-                # save it using the state function since build_topic_map used the legacy one inside
-                await state.save_topic_map(client, src_id, dest_id, topic_map)
-            else:
-                logger.info("Topic map loaded (%d topics) for %d:%d", len(topic_map), src_id, dest_id)
+            logger.info("Syncing topic map for %d:%d...", src_id, dest_id)
+            topic_map = await topic_mgr.build_topic_map(client, src_entity, dst_entity, src_id, dest_id)
+            # save it using the state function
+            await state.save_topic_map(client, src_id, dest_id, topic_map)
         elif not is_src_forum:
             logger.info("Source %d is not a forum. Skipping topic map.", src_id)
         elif not is_dest_forum:
