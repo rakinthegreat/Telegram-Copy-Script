@@ -309,7 +309,30 @@ async def main() -> None:
                     src_topic_id = top
                 elif getattr(rt, "forum_topic", False):
                     src_topic_id = getattr(rt, "reply_to_msg_id", 1) or 1
-            dest_topic_id = topic_map.get(src_topic_id, topic_map.get(1, 1))
+            
+            dest_topic_id = topic_map.get(src_topic_id)
+            if dest_topic_id is None:
+                # A brand new topic was created! Fetch its details and recreate it dynamically
+                logger.info("Live Sync: Unknown topic id %d detected, attempting to create...", src_topic_id)
+                topic_msg = await client.get_messages(src_entity, ids=src_topic_id)
+                if topic_msg and topic_msg.action and getattr(topic_msg.action, "title", None):
+                    class DummyDynamicTopic:
+                        title = topic_msg.action.title
+                        icon_color = getattr(topic_msg.action, "icon_color", None)
+                        icon_emoji_id = getattr(topic_msg.action, "icon_emoji_id", None)
+                    
+                    try:
+                        new_dest_id = await topic_mgr._create_topic(client, dest_entity, DummyDynamicTopic())
+                        topic_map[src_topic_id] = new_dest_id
+                        await state.save_topic_map(client, src_id, dest_id, topic_map)
+                        logger.info("Live Sync: Created new topic '%s' (%d → %d)", DummyDynamicTopic.title, src_topic_id, new_dest_id)
+                        dest_topic_id = new_dest_id
+                    except Exception as exc:
+                        logger.error("Live Sync: FAILED to create new topic '%s': %s", DummyDynamicTopic.title, exc)
+                        dest_topic_id = topic_map.get(1, 1)
+                else:
+                    logger.warning("Live Sync: Could not fetch details for topic %d, falling back to General.", src_topic_id)
+                    dest_topic_id = topic_map.get(1, 1)
 
         try:
             if msg.grouped_id:
