@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 # but keep download/upload logs visible!
 logging.getLogger("telethon.client.updates").setLevel(logging.WARNING)
 
+# Suppress Werkzeug logs to hide noisy 400 Bad Request errors from TLS handshakes
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
+
 # ── Flask health server ────────────────────────────────────────────────────────
 flask_app = Flask(__name__)
 _start_time = time.time()
