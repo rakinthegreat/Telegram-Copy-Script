@@ -115,7 +115,7 @@ async def _copy_history(
             "reverse": True,  # oldest first
             "limit": None,
         }
-        if is_forum and topic_src_id != 1:
+        if is_forum:
             iter_kwargs["reply_to"] = topic_src_id
 
         async for msg in client.iter_messages(**iter_kwargs):
